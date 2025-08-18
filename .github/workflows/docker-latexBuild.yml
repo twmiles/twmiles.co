@@ -1,0 +1,69 @@
+name: Build Current Resume
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - '.github/workflows/docker-latexBuild.yml'
+      - 'resume/TracyMiles_Resume.tex'
+      - 'resume/resume.cls'
+      - 'resume/Dockerfile'
+      - 'resume/assets/**'
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Try to pull prebuilt image (optional)
+        id: pull_img
+        run: |
+          set -e
+          IMAGE="ghcr.io/${{ github.repository_owner }}/latexresume:latest"
+          if docker pull "$IMAGE"; then
+            echo "img=$IMAGE" >> $GITHUB_OUTPUT
+          else
+            echo "img=local" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Log in to GHCR (if needed)
+        if: steps.pull_img.outputs.img == ''
+        run: echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build LaTeX Docker image (fallback)
+        if: steps.pull_img.outputs.img == 'local'
+        run: docker build . -f resume/Dockerfile -t latexresume
+
+      - name: Compile LaTeX resume
+        run: |
+          set -e
+          IMG="${{ steps.pull_img.outputs.img }}"
+          if [ "$IMG" = "local" ] || [ -z "$IMG" ]; then IMG=latexresume; fi
+          docker run --rm -v $(pwd)/resume:/input -v $(pwd)/resume:/output -v $(pwd)/resume/assets:/assets "$IMG"
+
+      - name: Copy compiled PDF to website path
+        run: |
+          mkdir -p resume
+          if [ -f "resume/build/TracyMiles_Resume.pdf" ]; then
+            cp "resume/build/TracyMiles_Resume.pdf" "resume/Tracy-Miles-Resume.pdf"
+          fi
+
+      - name: Commit updated PDF with date stamp
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add resume/Tracy-Miles-Resume.pdf
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            DT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+            git commit -m "Resume PDF Rebuild: updates as of ${DT}"
+            git push
+          fi

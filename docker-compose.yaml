@@ -1,0 +1,10 @@
+version: '3.6'
+
+services:
+  website:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - 80:80
+    volumes:
+      - .:/usr/share/nginx/html
