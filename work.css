@@ -223,7 +223,7 @@ body {
 
 /* Prevent typed text from wrapping to next line */
 .element {
-  white-space: nowrap;
+  white-space: normal;
 }
 
 /* Skeleton loading for work cards */
